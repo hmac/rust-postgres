@@ -13,6 +13,7 @@ use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::time;
 use tokio_postgres::error::SqlState;
+use tokio_postgres::logical_replication::{self, LogicalRepPayload};
 use tokio_postgres::tls::{NoTls, NoTlsStream};
 use tokio_postgres::types::{Kind, Type};
 use tokio_postgres::{
@@ -950,4 +951,53 @@ async fn deferred_constraint() {
         .execute("INSERT INTO t (i) VALUES (1)", &[])
         .await
         .unwrap_err();
+}
+
+#[tokio::test]
+async fn begin_logical_replication() {
+    let client = connect("host=localhost port=5433 user=postgres replication=database").await;
+
+    // client
+    //     .simple_query("CREATE TABLE t1 (id serial)")
+    //     .await
+    //     .unwrap();
+    // client
+    //     .simple_query("INSERT INTO t1 DEFAULT VALUES")
+    //     .await
+    //     .unwrap();
+
+    client
+        .simple_query("CREATE PUBLICATION p1 FOR ALL TABLES;")
+        .await
+        .unwrap();
+    client
+        .simple_query("CREATE_REPLICATION_SLOT s1 LOGICAL pgoutput;")
+        .await
+        .unwrap();
+
+    let client2 = logical_replication::Client::new(client.inner());
+
+    let rows = client.simple_query("IDENTIFY_SYSTEM;").await.unwrap();
+    match &rows[0] {
+        SimpleQueryMessage::Row(row) => {
+            if let Some(xlogpos) = row.get("xlogpos") {
+                let query = format!("START_REPLICATION SLOT s1 LOGICAL {} (proto_version '1', publication_names 'p1')", xlogpos);
+                let stream = client.start_logical_replication(&query).await.unwrap();
+                let mut last_wal_received: u64;
+                let data: Vec<_> = stream
+                    .map(|r| match r {
+                        Ok(LogicalRepPayload::PrimaryKeepalive { .. }) => {
+                            logical_replication::send_keepalive(client.inner(), last_wal_received)
+                        }
+                    })
+                    .try_collect()
+                    .await
+                    .unwrap();
+                assert_eq!(&data[..], []);
+            }
+        }
+        _ => {
+            panic!("Unexpected rows result");
+        }
+    }
 }

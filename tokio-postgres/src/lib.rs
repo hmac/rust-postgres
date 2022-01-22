@@ -119,6 +119,7 @@
 
 pub use crate::cancel_token::CancelToken;
 pub use crate::client::Client;
+
 pub use crate::config::Config;
 pub use crate::connection::Connection;
 pub use crate::copy_in::CopyInSink;
@@ -126,6 +127,7 @@ pub use crate::copy_out::CopyOutStream;
 use crate::error::DbError;
 pub use crate::error::Error;
 pub use crate::generic_client::GenericClient;
+// pub use crate::logical_replication::LogicalReplicationStream;
 pub use crate::portal::Portal;
 pub use crate::query::RowStream;
 pub use crate::row::{Row, SimpleQueryRow};
@@ -147,8 +149,8 @@ mod bind;
 mod cancel_query;
 mod cancel_query_raw;
 mod cancel_token;
-mod client;
-mod codec;
+pub mod client;
+pub mod codec;
 pub mod config;
 #[cfg(feature = "runtime")]
 mod connect;
@@ -156,17 +158,18 @@ mod connect_raw;
 #[cfg(feature = "runtime")]
 mod connect_socket;
 mod connect_tls;
-mod connection;
+pub mod connection;
 mod copy_in;
 mod copy_out;
 pub mod error;
 mod generic_client;
+// pub mod logical_replication;
 mod maybe_tls_stream;
 mod portal;
 mod prepare;
 mod query;
 pub mod row;
-mod simple_query;
+pub mod simple_query;
 #[cfg(feature = "runtime")]
 mod socket;
 mod statement;

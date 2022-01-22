@@ -2,6 +2,7 @@ use crate::codec::{BackendMessages, FrontendMessage};
 use crate::config::{Host, SslMode};
 use crate::connection::{Request, RequestMessages};
 use crate::copy_out::CopyOutStream;
+// use crate::logical_replication::LogicalReplicationStream;
 use crate::query::RowStream;
 use crate::simple_query::SimpleQueryStream;
 #[cfg(feature = "runtime")]
@@ -159,7 +160,7 @@ pub(crate) struct SocketConfig {
 /// The client is one half of what is returned when a connection is established. Users interact with the database
 /// through this client object.
 pub struct Client {
-    inner: Arc<InnerClient>,
+    pub inner: Arc<InnerClient>,
     #[cfg(feature = "runtime")]
     socket_config: Option<SocketConfig>,
     ssl_mode: SslMode,
@@ -448,6 +449,13 @@ impl Client {
         let statement = statement.__convert().into_statement(self).await?;
         copy_out::copy_out(self.inner(), statement).await
     }
+
+    // pub async fn start_logical_replication<'a>(
+    //     &'a self,
+    //     query: &str,
+    // ) -> Result<LogicalReplicationStream<'a>, Error> {
+    //     logical_replication::start_logical_replication(self.inner(), query).await
+    // }
 
     /// Executes a sequence of SQL statements using the simple query protocol, returning the resulting rows.
     ///

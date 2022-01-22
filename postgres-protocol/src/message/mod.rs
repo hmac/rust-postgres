@@ -6,3 +6,4 @@
 
 pub mod backend;
 pub mod frontend;
+pub mod logical_replication;

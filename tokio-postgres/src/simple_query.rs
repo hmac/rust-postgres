@@ -61,7 +61,7 @@ pub async fn batch_execute(client: &InnerClient, query: &str) -> Result<(), Erro
     }
 }
 
-fn encode(client: &InnerClient, query: &str) -> Result<Bytes, Error> {
+pub fn encode(client: &InnerClient, query: &str) -> Result<Bytes, Error> {
     client.with_buf(|buf| {
         frontend::query(query, buf).map_err(Error::encode)?;
         Ok(buf.split().freeze())
@@ -117,6 +117,10 @@ impl Stream for SimpleQueryStream {
                     return Poll::Ready(Some(Ok(SimpleQueryMessage::Row(row))));
                 }
                 Message::ReadyForQuery(_) => return Poll::Ready(None),
+                Message::CopyBothResponse(body) => {
+                    // Returned in response to a START_REPLICATION command
+                    return Poll::Ready(Some(Ok(SimpleQueryMessage::CommandComplete(0))));
+                }
                 _ => return Poll::Ready(Some(Err(Error::unexpected_message()))),
             }
         }

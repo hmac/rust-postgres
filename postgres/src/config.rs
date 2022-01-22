@@ -51,6 +51,10 @@ use tokio_postgres::{Error, Socket};
 /// * `target_session_attrs` - Specifies requirements of the session. If set to `read-write`, the client will check that
 ///     the `transaction_read_write` session parameter is set to `on`. This can be used to connect to the primary server
 ///     in a database cluster as opposed to the secondary read-only mirrors. Defaults to `all`.
+/// * `replication` - Determines whether the connection should use the replication protocol instead of the normal protocol.
+///     If set to `true`, `on`, `yes` or `1`, the connection will go into physical replication mode. If set to `database`,
+///     the connection will go into logical replication mode. If `false`, `off`, `no` or `0`, the connection will be a
+///     regular one. This is the default.
 ///
 /// ## Examples
 ///

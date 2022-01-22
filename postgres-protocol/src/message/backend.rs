@@ -9,6 +9,7 @@ use std::io::{self, Read};
 use std::ops::Range;
 use std::str;
 
+use crate::message::logical_replication::LogicalRepMessage;
 use crate::Oid;
 
 pub const PARSE_COMPLETE_TAG: u8 = b'1';
@@ -22,6 +23,7 @@ pub const DATA_ROW_TAG: u8 = b'D';
 pub const ERROR_RESPONSE_TAG: u8 = b'E';
 pub const COPY_IN_RESPONSE_TAG: u8 = b'G';
 pub const COPY_OUT_RESPONSE_TAG: u8 = b'H';
+pub const COPY_BOTH_RESPONSE_TAG: u8 = b'W';
 pub const EMPTY_QUERY_RESPONSE_TAG: u8 = b'I';
 pub const BACKEND_KEY_DATA_TAG: u8 = b'K';
 pub const NO_DATA_TAG: u8 = b'n';
@@ -32,6 +34,21 @@ pub const PARAMETER_STATUS_TAG: u8 = b'S';
 pub const PARAMETER_DESCRIPTION_TAG: u8 = b't';
 pub const ROW_DESCRIPTION_TAG: u8 = b'T';
 pub const READY_FOR_QUERY_TAG: u8 = b'Z';
+// Logical replication messages
+pub const LR_BEGIN_TAG: u8 = b'B';
+pub const LR_MESSAGE_TAG: u8 = b'M';
+pub const LR_COMMIT_TAG: u8 = b'C';
+pub const LR_ORIGIN_TAG: u8 = b'O';
+pub const LR_RELATION_TAG: u8 = b'R';
+pub const LR_TYPE_TAG: u8 = b'Y';
+pub const LR_INSERT_TAG: u8 = b'I';
+pub const LR_UPDATE_TAG: u8 = b'U';
+pub const LR_DELETE_TAG: u8 = b'D';
+pub const LR_TRUNCATE_TAG: u8 = b'T';
+pub const LR_STREAM_START_TAG: u8 = b'S';
+pub const LR_STREAM_STOP_TAG: u8 = b'E';
+pub const LR_STREAM_COMMIT_TAG: u8 = b'c';
+pub const LR_STREAM_ABORT_TAG: u8 = b'A';
 
 #[derive(Debug, Copy, Clone)]
 pub struct Header {
@@ -93,6 +110,7 @@ pub enum Message {
     CopyDone,
     CopyInResponse(CopyInResponseBody),
     CopyOutResponse(CopyOutResponseBody),
+    CopyBothResponse(CopyBothResponseBody),
     DataRow(DataRowBody),
     EmptyQueryResponse,
     ErrorResponse(ErrorResponseBody),
@@ -108,6 +126,43 @@ pub enum Message {
 }
 
 impl Message {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Message::AuthenticationCleartextPassword => "AuthenticationCleartextPassword",
+            Message::AuthenticationGss => "AuthenticationGss",
+            Message::AuthenticationKerberosV5 => "AuthenticationKerberosV5",
+            Message::AuthenticationMd5Password(_) => "AuthenticationMd5Password",
+            Message::AuthenticationOk => "AuthenticationOk",
+            Message::AuthenticationScmCredential => "AuthenticationScmCredential",
+            Message::AuthenticationSspi => "AuthenticationSspi",
+            Message::AuthenticationGssContinue(_) => "AuthenticationSasl",
+            Message::AuthenticationSasl(_) => "AuthenticationSasl",
+            Message::AuthenticationSaslContinue(_) => "AuthenticationSaslContinue",
+            Message::AuthenticationSaslFinal(_) => "AuthenticationSaslFinal",
+            Message::BackendKeyData(_) => "BackendKeyData",
+            Message::BindComplete => "BindComplete",
+            Message::CloseComplete => "CloseComplete",
+            Message::CommandComplete(_) => "CommandComplete",
+            Message::CopyData(_) => "CopyData",
+            Message::CopyDone => "CopyDone",
+            Message::CopyInResponse(_) => "CopyInResponse",
+            Message::CopyOutResponse(_) => "CopyOutResponse",
+            Message::CopyBothResponse(_) => "CopyBothResponse",
+            Message::DataRow(_) => "DataRow",
+            Message::EmptyQueryResponse => "EmptyQueryResponse",
+            Message::ErrorResponse(_) => "ErrorResponse",
+            Message::NoData => "NoData",
+            Message::NoticeResponse(_) => "NoticeResponse",
+            Message::NotificationResponse(_) => "NotificationResponse",
+            Message::ParameterDescription(_) => "ParameterDescription",
+            Message::ParameterStatus(_) => "ParameterStatus",
+            Message::ParseComplete => "ParseComplete",
+            Message::PortalSuspended => "PortalSuspended",
+            Message::ReadyForQuery(_) => "ReadyForQuery",
+            Message::RowDescription(_) => "RowDescription",
+        }
+    }
+
     #[inline]
     pub fn parse(buf: &mut BytesMut) -> io::Result<Option<Message>> {
         if buf.len() < 5 {
@@ -190,6 +245,16 @@ impl Message {
                     storage,
                 })
             }
+            COPY_BOTH_RESPONSE_TAG => {
+                let format = buf.read_u8()?;
+                let len = buf.read_u16::<BigEndian>()?;
+                let storage = buf.read_all();
+                Message::CopyBothResponse(CopyBothResponseBody {
+                    format,
+                    len,
+                    storage,
+                })
+            }
             EMPTY_QUERY_RESPONSE_TAG => Message::EmptyQueryResponse,
             BACKEND_KEY_DATA_TAG => {
                 let process_id = buf.read_i32::<BigEndian>()?;
@@ -262,7 +327,7 @@ impl Message {
             tag => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
-                    format!("unknown message tag `{}`", tag),
+                    format!("unknown message tag `{:?}`", tag),
                 ));
             }
         };
@@ -510,6 +575,27 @@ pub struct CopyOutResponseBody {
 }
 
 impl CopyOutResponseBody {
+    #[inline]
+    pub fn format(&self) -> u8 {
+        self.format
+    }
+
+    #[inline]
+    pub fn column_formats(&self) -> ColumnFormats<'_> {
+        ColumnFormats {
+            remaining: self.len,
+            buf: &self.storage,
+        }
+    }
+}
+
+pub struct CopyBothResponseBody {
+    format: u8,
+    len: u16,
+    storage: Bytes,
+}
+
+impl CopyBothResponseBody {
     #[inline]
     pub fn format(&self) -> u8 {
         self.format

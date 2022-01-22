@@ -105,6 +105,10 @@ pub enum Host {
 /// * `channel_binding` - Controls usage of channel binding in the authentication process. If set to `disable`, channel
 ///     binding will not be used. If set to `prefer`, channel binding will be used if available, but not used otherwise.
 ///     If set to `require`, the authentication process will fail if channel binding is not used. Defaults to `prefer`.
+/// * `replication` - Determines whether the connection should use the replication protocol instead of the normal protocol.
+///     If set to `true`, `on`, `yes` or `1`, the connection will go into physical replication mode. If set to `database`,
+///     the connection will go into logical replication mode. If `false`, `off`, `no` or `0`, the connection will be a
+///     regular one. This is the default.
 ///
 /// ## Examples
 ///
@@ -159,6 +163,7 @@ pub struct Config {
     pub(crate) keepalives_idle: Duration,
     pub(crate) target_session_attrs: TargetSessionAttrs,
     pub(crate) channel_binding: ChannelBinding,
+    pub(crate) replication: Option<String>,
 }
 
 impl Default for Config {
@@ -184,6 +189,7 @@ impl Config {
             keepalives_idle: Duration::from_secs(2 * 60 * 60),
             target_session_attrs: TargetSessionAttrs::Any,
             channel_binding: ChannelBinding::Prefer,
+            replication: None,
         }
     }
 
@@ -387,6 +393,19 @@ impl Config {
         self.channel_binding
     }
 
+    /// Sets the replication mode.
+    ///
+    /// Defaults to `off`.
+    pub fn replication(&mut self, replication: &str) -> &mut Config {
+        self.replication = Some(replication.to_string());
+        self
+    }
+
+    /// Gets the replication mode.
+    pub fn get_replication(&self) -> Option<&str> {
+        self.replication.as_deref()
+    }
+
     fn param(&mut self, key: &str, value: &str) -> Result<(), Error> {
         match key {
             "user" => {
@@ -476,6 +495,9 @@ impl Config {
                 };
                 self.channel_binding(channel_binding);
             }
+            "replication" => {
+                self.replication(value);
+            }
             key => {
                 return Err(Error::config_parse(Box::new(UnknownOption(
                     key.to_string(),
@@ -548,6 +570,7 @@ impl fmt::Debug for Config {
             .field("keepalives_idle", &self.keepalives_idle)
             .field("target_session_attrs", &self.target_session_attrs)
             .field("channel_binding", &self.channel_binding)
+            .field("replication", &self.replication)
             .finish()
     }
 }
