@@ -189,7 +189,7 @@ impl Client {
         }
     }
 
-    pub(crate) fn inner(&self) -> &Arc<InnerClient> {
+    pub fn inner(&self) -> &Arc<InnerClient> {
         &self.inner
     }
 

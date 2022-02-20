@@ -49,6 +49,9 @@ pub const LR_STREAM_START_TAG: u8 = b'S';
 pub const LR_STREAM_STOP_TAG: u8 = b'E';
 pub const LR_STREAM_COMMIT_TAG: u8 = b'c';
 pub const LR_STREAM_ABORT_TAG: u8 = b'A';
+// Messages sent client to backend
+pub const QUERY_TAG: u8 = b'Q';
+pub const TERMINATE_TAG: u8 = b'X';
 
 #[derive(Debug, Copy, Clone)]
 pub struct Header {
@@ -122,8 +125,10 @@ pub enum Message {
     ParameterStatus(ParameterStatusBody),
     ParseComplete,
     PortalSuspended,
+    Query(QueryBody),
     ReadyForQuery(ReadyForQueryBody),
     RowDescription(RowDescriptionBody),
+    Terminate,
 }
 
 impl Message {
@@ -159,8 +164,10 @@ impl Message {
             Message::ParameterStatus(_) => "ParameterStatus",
             Message::ParseComplete => "ParseComplete",
             Message::PortalSuspended => "PortalSuspended",
+            Message::Query(_) => "Query",
             Message::ReadyForQuery(_) => "ReadyForQuery",
             Message::RowDescription(_) => "RowDescription",
+            Message::Terminate => "Terminate",
         }
     }
 
@@ -316,6 +323,10 @@ impl Message {
                 let storage = buf.read_all();
                 Message::ParameterDescription(ParameterDescriptionBody { storage, len })
             }
+            QUERY_TAG => {
+                let query = buf.read_cstr()?;
+                Message::Query(QueryBody { query })
+            }
             ROW_DESCRIPTION_TAG => {
                 let len = buf.read_u16::<BigEndian>()?;
                 let storage = buf.read_all();
@@ -325,6 +336,7 @@ impl Message {
                 let status = buf.read_u8()?;
                 Message::ReadyForQuery(ReadyForQueryBody { status })
             }
+            TERMINATE_TAG => Message::Terminate,
             tag => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -429,6 +441,10 @@ impl AuthenticationSaslBody {
     pub fn mechanisms(&self) -> SaslMechanisms<'_> {
         SaslMechanisms(&self.0)
     }
+
+    pub fn data(&self) -> &Bytes {
+        &self.0
+    }
 }
 
 #[derive(Debug)]
@@ -505,11 +521,15 @@ impl CommandCompleteBody {
     pub fn tag(&self) -> io::Result<&str> {
         get_str(&self.tag)
     }
+
+    pub fn tag_bytes(&self) -> &Bytes {
+        &self.tag
+    }
 }
 
 #[derive(Debug)]
 pub struct CopyDataBody {
-    storage: Bytes,
+    pub storage: Bytes,
 }
 
 impl CopyDataBody {
@@ -527,7 +547,7 @@ impl CopyDataBody {
 #[derive(Debug)]
 pub struct CopyInResponseBody {
     format: u8,
-    len: u16,
+    pub len: u16,
     storage: Bytes,
 }
 
@@ -543,6 +563,10 @@ impl CopyInResponseBody {
             remaining: self.len,
             buf: &self.storage,
         }
+    }
+
+    pub fn storage(&self) -> &Bytes {
+        &self.storage
     }
 }
 
@@ -583,7 +607,7 @@ impl<'a> FallibleIterator for ColumnFormats<'a> {
 #[derive(Debug)]
 pub struct CopyOutResponseBody {
     format: u8,
-    len: u16,
+    pub len: u16,
     storage: Bytes,
 }
 
@@ -600,12 +624,16 @@ impl CopyOutResponseBody {
             buf: &self.storage,
         }
     }
+
+    pub fn storage(&self) -> &Bytes {
+        &self.storage
+    }
 }
 
 #[derive(Debug)]
 pub struct CopyBothResponseBody {
     format: u8,
-    len: u16,
+    pub len: u16,
     storage: Bytes,
 }
 
@@ -622,12 +650,16 @@ impl CopyBothResponseBody {
             buf: &self.storage,
         }
     }
+
+    pub fn storage(&self) -> &Bytes {
+        &self.storage
+    }
 }
 
 #[derive(Debug)]
 pub struct DataRowBody {
     storage: Bytes,
-    len: u16,
+    pub len: u16,
 }
 
 impl DataRowBody {
@@ -705,6 +737,10 @@ impl ErrorResponseBody {
     pub fn fields(&self) -> ErrorFields<'_> {
         ErrorFields { buf: &self.storage }
     }
+
+    pub fn storage(&self) -> &Bytes {
+        &self.storage
+    }
 }
 
 #[derive(Debug)]
@@ -766,6 +802,10 @@ impl NoticeResponseBody {
     pub fn fields(&self) -> ErrorFields<'_> {
         ErrorFields { buf: &self.storage }
     }
+
+    pub fn storage(&self) -> &Bytes {
+        &self.storage
+    }
 }
 
 #[derive(Debug)]
@@ -786,16 +826,24 @@ impl NotificationResponseBody {
         get_str(&self.channel)
     }
 
+    pub fn channel_bytes(&self) -> &Bytes {
+        &self.channel
+    }
+
     #[inline]
     pub fn message(&self) -> io::Result<&str> {
         get_str(&self.message)
+    }
+
+    pub fn message_bytes(&self) -> &Bytes {
+        &self.message
     }
 }
 
 #[derive(Debug)]
 pub struct ParameterDescriptionBody {
     storage: Bytes,
-    len: u16,
+    pub len: u16,
 }
 
 impl ParameterDescriptionBody {
@@ -805,6 +853,10 @@ impl ParameterDescriptionBody {
             buf: &self.storage,
             remaining: self.len,
         }
+    }
+
+    pub fn storage(&self) -> &Bytes {
+        &self.storage
     }
 }
 
@@ -854,10 +906,23 @@ impl ParameterStatusBody {
         get_str(&self.name)
     }
 
+    pub fn name_bytes(&self) -> &Bytes {
+        &self.name
+    }
+
     #[inline]
     pub fn value(&self) -> io::Result<&str> {
         get_str(&self.value)
     }
+
+    pub fn value_bytes(&self) -> &Bytes {
+        &self.value
+    }
+}
+
+#[derive(Debug)]
+pub struct QueryBody {
+    pub query: Bytes,
 }
 
 #[derive(Debug)]
@@ -875,7 +940,7 @@ impl ReadyForQueryBody {
 #[derive(Debug)]
 pub struct RowDescriptionBody {
     storage: Bytes,
-    len: u16,
+    pub len: u16,
 }
 
 impl RowDescriptionBody {
@@ -885,6 +950,9 @@ impl RowDescriptionBody {
             buf: &self.storage,
             remaining: self.len,
         }
+    }
+    pub fn storage(&self) -> &Bytes {
+        &self.storage
     }
 }
 
